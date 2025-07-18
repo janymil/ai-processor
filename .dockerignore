@@ -1,0 +1,8 @@
+node_modules
+*.js
+*.js.map
+.git
+.gitignore
+README.md
+.env
+.env.local

@@ -1,0 +1,22 @@
+{
+  "name": "ai-processor",
+  "version": "1.0.0",
+  "description": "OpenAI API proxy service for FinanzerPro",
+  "main": "index.ts",
+  "scripts": {
+    "start": "npx tsx index.ts",
+    "dev": "npx tsx index.ts"
+  },
+  "dependencies": {
+    "express": "4.18.2",
+    "cors": "2.8.5",
+    "dotenv": "16.3.1",
+    "openai": "4.20.1",
+    "tsx": "4.6.2",
+    "typescript": "5.6.3",
+    "qrcode": "1.5.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
