@@ -8,13 +8,14 @@
     "dev": "npx tsx index.ts"
   },
   "dependencies": {
-    "express": "4.18.2",
     "cors": "2.8.5",
     "dotenv": "16.3.1",
+    "express": "4.18.2",
     "openai": "4.20.1",
+    "pm2": "^6.0.8",
+    "qrcode": "1.5.3",
     "tsx": "4.6.2",
-    "typescript": "5.6.3",
-    "qrcode": "1.5.3"
+    "typescript": "5.6.3"
   },
   "engines": {
     "node": ">=18"

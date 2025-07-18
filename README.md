@@ -4,7 +4,7 @@ A standalone Node.js microservice for handling OpenAI API calls for FinanzerPro'
 
 ## Architecture
 
-This service offloads heavy OpenAI API computations from the main Replit app to Fly.io infrastructure while maintaining complete data sovereignty in the main application.
+This service offloads heavy OpenAI API computations from the main application to your VPS infrastructure using Docker, while maintaining complete data sovereignty in the main application.
 
 ## API Endpoints
 
@@ -35,26 +35,74 @@ This service offloads heavy OpenAI API computations from the main Replit app to 
 }
 ```
 
-## Deployment to Fly.io
+## Deployment to VPS
 
-1. Install Fly CLI: `curl -L https://fly.io/install.sh | sh`
-2. Login: `fly auth login`
-3. Deploy: `fly deploy`
-4. Set secrets: `fly secrets set OPENAI_API_KEY=your_key_here`
+### Prerequisites
+1. VPS with Docker and Docker Compose installed
+2. OpenAI API Key
+
+### Quick Deploy
+```bash
+# Make deployment script executable
+chmod +x deploy-vps.sh
+
+# Deploy the service
+./deploy-vps.sh
+```
+
+### Manual Deployment
+```bash
+# Create .env file with your OpenAI API key
+echo "OPENAI_API_KEY=your_openai_api_key_here" > .env
+
+# Build and start with Docker Compose
+docker-compose up -d
+
+# Check service health
+curl http://localhost:8080/health
+```
+
+### Set Environment Variables
+Create a `.env` file in the project root:
+```env
+OPENAI_API_KEY=your_openai_api_key_here
+PORT=8080
+NODE_ENV=production
+```
 
 ## Environment Variables
 
 - `OPENAI_API_KEY` - OpenAI API key for GPT-4o access
-- `PORT` - Server port (default: 3000, Fly.io uses 8080)
+- `PORT` - Server port (default: 8080)
+- `NODE_ENV` - Environment mode (production for VPS deployment)
 
 ## Local Development
 
 ```bash
-node server.js
+npm start
 ```
 
 Test endpoints:
 ```bash
-curl http://localhost:3000/health
-curl -X POST http://localhost:3000/generate-financial-tip -H "Content-Type: application/json" -d '{"summary": "..."}'
+curl http://localhost:8080/health
+curl -X POST http://localhost:8080/generate-financial-tip -H "Content-Type: application/json" -d '{"summary": "..."}'
+```
+
+## VPS Management Commands
+
+```bash
+# View logs
+docker-compose logs -f
+
+# Stop service
+docker-compose down
+
+# Restart service
+docker-compose restart
+
+# Check running containers
+docker ps
+
+# Update deployment
+./deploy-vps.sh
 ```
