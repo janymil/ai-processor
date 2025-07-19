@@ -679,6 +679,7 @@ You are an expert financial advisor who provides personalized, contextual recomm
 
     const responseText = response.choices[0].message.content || '{}';
     console.log('[contextual-tips] OpenAI response received:', responseText.substring(0, 200));
+    console.log('[contextual-tips] Full response length:', responseText.length);
     
     const aiResponse = JSON.parse(responseText);
     
@@ -699,6 +700,7 @@ You are an expert financial advisor who provides personalized, contextual recomm
 
   } catch (error) {
     console.error('Error generating contextual financial tips:', error);
+    console.error('Error stack:', error.stack);
     console.error('OpenAI Error details:', {
       message: error.message,
       type: error.type,
@@ -1820,7 +1822,7 @@ Financial Summary:
 
 Transaction History (${recentTransactions.length} transactions):
 ${recentTransactions.slice(0, 20).map(t => 
-  `- ${t.description}: $${t.amount} (${t.categoryName}) on ${t.date.split('T')[0]}`
+  `- ${t.description}: $${t.amount} (${t.categoryName || 'Other'}) on ${(t.date || '').toString().split('T')[0] || 'Unknown date'}`
 ).join('\n')}
 
 Budgets: ${budgets.length} active budgets
