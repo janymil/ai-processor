@@ -101,8 +101,11 @@ class DeepSeekClient {
 const deepseek = new DeepSeekClient(process.env.DEEPSEEK_API_KEY || '');
 
 // Model selection function - keep all prompts and logic intact
-function getAIClient(useDeepSeek: boolean = false) {
-  return useDeepSeek ? deepseek : openai;
+function getAIClient(model: 'deepseek' | 'gpt-4o' | 'gpt-4o-mini' = 'gpt-4o-mini') {
+  if (model === 'deepseek') {
+    return deepseek;
+  }
+  return openai;
 }
 
 export interface ExpenseCategorizationResult {
@@ -191,8 +194,8 @@ export async function categorizeExpenseWithUserCategories(
   try {
     const userCategoryList = userCategories.map(cat => `- ${cat.name} (ID: ${cat.id})`).join('\n');
     
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat",
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -314,8 +317,8 @@ export async function categorizeExpense(
       .map(([merchant, category]) => `"${merchant}" → ${category}`)
       .join('\n');
 
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat",
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -652,8 +655,8 @@ Return 2-4 contextual tips in JSON format, prioritizing scenario-based insights:
   ]
 }`;
 
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat", // Using DeepSeek-R1 instead of GPT-4o
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini", // Using DeepSeek-R1 instead of GPT-4o
       messages: [
         {
           role: "system",
@@ -791,8 +794,8 @@ Transaction Pattern Analysis:
 Generate 4 independent box analyses with exact mathematical calculations.`;
 
     // Direct OpenAI call (no recursion - this IS the AI processor)
-    const response = await getAIClient(true).chat.completions.create({
-        model: "deepseek-chat",
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -953,8 +956,8 @@ export async function generateSpendingInsights(transactions: Array<{
     const recentTransactions = expenseTransactions.slice(0, 10);
     const totalAmount = recentTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat", // Use faster model for spending insights
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini", // Use faster model for spending insights
       messages: [
         {
           role: "system",
@@ -1048,8 +1051,8 @@ export async function generateAIFinancialHealthScore(financialData: {
     // Create hash for caching
     // No caching in Fly.io - caching handled by main application
 
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat",
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -1258,8 +1261,8 @@ Analysis Requirements:
 - Include next 3 months forecast for each category
 - Analyze budget adherence and variance predictions`;
 
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
       messages: [
         {
           role: "system",
@@ -1466,8 +1469,8 @@ ANALYSIS GUIDELINES:
 - Account for seasonal variations if detectable
 - Ensure all numeric values are provided (no null/undefined)`;
 
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat",
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -1650,8 +1653,8 @@ Focus on:
 
 Only provide recommendations and insights based on the actual financial data provided. Do not include generic advice.`;
 
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
       messages: [
         {
           role: "system",
@@ -1767,8 +1770,8 @@ export async function generateFinancialHealthScore(financialData: {
     // Ultra-optimize for speed - minimal data processing
     const savingsRate = summary.totalIncome > 0 ? ((summary.totalIncome - summary.totalExpenses) / summary.totalIncome * 100) : 0;
     
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat",
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -2110,8 +2113,8 @@ CRITICAL QUALITY STANDARDS:
 Respond ONLY with valid JSON. No explanations or additional text.`;
 
   try {
-    const response = await getAIClient(true).chat.completions.create({
-      model: "deepseek-chat",
+    const response = await getAIClient('gpt-4o-mini').chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
