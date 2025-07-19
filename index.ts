@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import OpenAI from "openai";
+import axios from "axios";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -53,6 +54,56 @@ app.use(express.json({ limit: '10mb' }));
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// DeepSeek API client - mimics OpenAI interface
+class DeepSeekClient {
+  private apiKey: string;
+  private baseURL: string = 'https://api.deepseek.com/v1';
+
+  constructor(apiKey: string) {
+    this.apiKey = apiKey;
+  }
+
+  chat = {
+    completions: {
+      create: async (params: any) => {
+        try {
+          const response = await axios.post(`${this.baseURL}/chat/completions`, {
+            model: params.model,
+            messages: params.messages,
+            temperature: params.temperature || 0.7,
+            max_tokens: params.max_tokens || 4000,
+            response_format: params.response_format
+          }, {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          // Return in OpenAI compatible format
+          return {
+            choices: [{
+              message: {
+                content: response.data.choices[0].message.content
+              }
+            }]
+          };
+        } catch (error) {
+          console.error('DeepSeek API error:', error);
+          throw error;
+        }
+      }
+    }
+  };
+}
+
+const deepseek = new DeepSeekClient(process.env.DEEPSEEK_API_KEY || '');
+
+// Model selection function - keep all prompts and logic intact
+function getAIClient(useDeepSeek: boolean = false) {
+  return useDeepSeek ? deepseek : openai;
+}
 
 export interface ExpenseCategorizationResult {
   category: string;
@@ -140,8 +191,8 @@ export async function categorizeExpenseWithUserCategories(
   try {
     const userCategoryList = userCategories.map(cat => `- ${cat.name} (ID: ${cat.id})`).join('\n');
     
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat",
       messages: [
         {
           role: "system",
@@ -263,8 +314,8 @@ export async function categorizeExpense(
       .map(([merchant, category]) => `"${merchant}" → ${category}`)
       .join('\n');
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat",
       messages: [
         {
           role: "system",
@@ -601,8 +652,8 @@ Return 2-4 contextual tips in JSON format, prioritizing scenario-based insights:
   ]
 }`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat", // Using DeepSeek-R1 instead of GPT-4o
       messages: [
         {
           role: "system",
@@ -740,8 +791,8 @@ Transaction Pattern Analysis:
 Generate 4 independent box analyses with exact mathematical calculations.`;
 
     // Direct OpenAI call (no recursion - this IS the AI processor)
-    const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+    const response = await getAIClient(true).chat.completions.create({
+        model: "deepseek-chat",
         messages: [
           {
             role: "system",
@@ -902,8 +953,8 @@ export async function generateSpendingInsights(transactions: Array<{
     const recentTransactions = expenseTransactions.slice(0, 10);
     const totalAmount = recentTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Use faster model for spending insights
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat", // Use faster model for spending insights
       messages: [
         {
           role: "system",
@@ -997,8 +1048,8 @@ export async function generateAIFinancialHealthScore(financialData: {
     // Create hash for caching
     // No caching in Fly.io - caching handled by main application
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat",
       messages: [
         {
           role: "system",
@@ -1207,8 +1258,8 @@ Analysis Requirements:
 - Include next 3 months forecast for each category
 - Analyze budget adherence and variance predictions`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
       messages: [
         {
           role: "system",
@@ -1415,8 +1466,8 @@ ANALYSIS GUIDELINES:
 - Account for seasonal variations if detectable
 - Ensure all numeric values are provided (no null/undefined)`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat",
       messages: [
         {
           role: "system",
@@ -1599,8 +1650,8 @@ Focus on:
 
 Only provide recommendations and insights based on the actual financial data provided. Do not include generic advice.`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
       messages: [
         {
           role: "system",
@@ -1716,8 +1767,8 @@ export async function generateFinancialHealthScore(financialData: {
     // Ultra-optimize for speed - minimal data processing
     const savingsRate = summary.totalIncome > 0 ? ((summary.totalIncome - summary.totalExpenses) / summary.totalIncome * 100) : 0;
     
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat",
       messages: [
         {
           role: "system",
@@ -1872,7 +1923,7 @@ NEVER return empty arrays for personalizedFactors or recommendations.`
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'ai-processor', model: 'gpt-4o' });
+  res.json({ status: 'ok', service: 'ai-processor', model: 'deepseek-chat' });
 });
 
 // Unified AI endpoint - stateless processing only
@@ -2059,8 +2110,8 @@ CRITICAL QUALITY STANDARDS:
 Respond ONLY with valid JSON. No explanations or additional text.`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const response = await getAIClient(true).chat.completions.create({
+      model: "deepseek-chat",
       messages: [
         {
           role: "system",
