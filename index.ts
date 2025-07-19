@@ -414,18 +414,22 @@ export async function generateContextualFinancialTips(data: {
     recurring?: boolean;
   }>;
   budgets: Array<{
-    categoryName: string;
-    budgetAmount: number;
+    category?: string;
+    categoryName?: string;
+    amount?: number;
+    budgetAmount?: number;
     spent: number;
-    remaining: number;
+    remaining?: number;
     period?: string;
   }>;
   goals?: Array<{
     name: string;
-    targetAmount: number;
-    currentAmount: number;
-    targetDate: string;
-    type: 'saving' | 'debt' | 'investment';
+    target?: number;
+    targetAmount?: number;
+    current?: number;
+    currentAmount?: number;
+    targetDate?: string;
+    type?: 'saving' | 'debt' | 'investment';
   }>;
   selectedMonth: string;
   language?: string;
@@ -440,8 +444,9 @@ export async function generateContextualFinancialTips(data: {
   try {
     const { summary, transactions, budgets, goals, selectedMonth, language = 'en-us' } = data;
     
-    // Return basic tip if no meaningful data
-    if (transactions.length === 0 && summary.totalIncome === 0 && summary.totalExpenses === 0) {
+    // Return basic tip if no meaningful data - use safe checks
+    if (!transactions || transactions.length === 0 && (!summary || (summary.totalIncome === 0 && summary.totalExpenses === 0))) {
+      console.log('[contextual-tips] Returning basic tip due to insufficient data');
       return {
         tips: [{
           id: 'basic_tip',
@@ -454,9 +459,16 @@ export async function generateContextualFinancialTips(data: {
       };
     }
 
-    // Build comprehensive prompt based on contextual tips routes logic
-    const netBalance = summary.totalIncome - summary.totalExpenses;
-    const savingsRate = summary.totalIncome > 0 ? (netBalance / summary.totalIncome) * 100 : 0;
+    // Build comprehensive prompt based on contextual tips routes logic - use safe summary handling
+    const safeSummary = {
+      totalIncome: summary?.totalIncome || 0,
+      totalExpenses: summary?.totalExpenses || 0,
+      netBalance: summary?.netBalance || 0,
+      transactionCount: summary?.transactionCount || 0
+    };
+    
+    const netBalance = safeSummary.totalIncome - safeSummary.totalExpenses;
+    const savingsRate = safeSummary.totalIncome > 0 ? (netBalance / safeSummary.totalIncome) * 100 : 0;
     
     // Analyze spending by category - use the correct field mapping
     const categorySpending = new Map();
@@ -565,7 +577,7 @@ export async function generateContextualFinancialTips(data: {
     
     // Check for spending concentration and patterns
     topSpendingCategories.forEach(([category, amount]) => {
-      const categoryPercent = (amount / summary.totalExpenses) * 100;
+      const categoryPercent = safeSummary.totalExpenses > 0 ? (amount / safeSummary.totalExpenses) * 100 : 0;
       const categoryFreq = transactionFrequency.get(category) || 0;
       
       if (categoryPercent > 40) {
@@ -575,7 +587,7 @@ export async function generateContextualFinancialTips(data: {
     
     // Check for positive spending improvements
     if (expenseTransactions.length > 0) {
-      const avgTransactionAmount = summary.totalExpenses / expenseTransactions.length;
+      const avgTransactionAmount = expenseTransactions.length > 0 ? safeSummary.totalExpenses / expenseTransactions.length : 0;
       if (avgTransactionAmount < 30 && expenseTransactions.length > 15) {
         scenarios.push(`🟩 Controlled spending: Great job! You're averaging $${avgTransactionAmount.toFixed(2)} per transaction, showing mindful spending habits.`);
       }
@@ -587,7 +599,7 @@ export async function generateContextualFinancialTips(data: {
         const amount = typeof t.amount === 'string' ? parseFloat(t.amount) : (t.amount || 0);
         return sum + amount;
       }, 0);
-      const recurringPercent = (recurringTotal / summary.totalExpenses) * 100;
+      const recurringPercent = safeSummary.totalExpenses > 0 ? (recurringTotal / safeSummary.totalExpenses) * 100 : 0;
       scenarios.push(`🟦 Recurring expenses: ${recurringPercent.toFixed(0)}% of expenses are recurring ($${recurringTotal.toFixed(2)} from ${recurringTransactions.length} transactions).`);
     }
 
@@ -595,20 +607,32 @@ export async function generateContextualFinancialTips(data: {
     const prompt = `You are an expert financial advisor analyzing a user's financial data for ${selectedMonth}. Provide 2-4 specific, actionable financial tips based on their actual data and identified scenarios.
 
 FINANCIAL OVERVIEW:
-- Total Income: $${summary.totalIncome.toLocaleString()}
-- Total Expenses: $${summary.totalExpenses.toLocaleString()}
+- Total Income: $${safeSummary.totalIncome.toLocaleString()}
+- Total Expenses: $${safeSummary.totalExpenses.toLocaleString()}
 - Net Balance: $${netBalance.toLocaleString()}
 - Savings Rate: ${savingsRate.toFixed(1)}%
-- Number of Transactions: ${summary.transactionCount}
+- Number of Transactions: ${safeSummary.transactionCount}
 
 TOP SPENDING CATEGORIES:
-${topSpendingCategories.map(([cat, amount]) => `- ${cat}: $${amount.toLocaleString()} (${((amount/summary.totalExpenses)*100).toFixed(1)}%)`).join('\n')}
+${topSpendingCategories.map(([cat, amount]) => `- ${cat}: $${amount.toLocaleString()} (${safeSummary.totalExpenses > 0 ? ((amount/safeSummary.totalExpenses)*100).toFixed(1) : 0}%)`).join('\n')}
 
 BUDGET STATUS:
-${budgets.length > 0 ? budgets.map(b => `- ${b.categoryName}: $${b.spent.toLocaleString()}/$${b.budgetAmount.toLocaleString()} (${b.remaining >= 0 ? 'under' : 'over'} budget by $${Math.abs(b.remaining).toLocaleString()}) - ${b.period || 'monthly'}`).join('\n') : '- No budgets set'}
+${budgets.length > 0 ? budgets.map(b => {
+  const categoryName = b.categoryName || b.category || 'Unknown';
+  const budgetAmount = b.budgetAmount || b.amount || 0;
+  const spent = b.spent || 0;
+  const remaining = b.remaining !== undefined ? b.remaining : (budgetAmount - spent);
+  return `- ${categoryName}: $${spent.toLocaleString()}/$${budgetAmount.toLocaleString()} (${remaining >= 0 ? 'under' : 'over'} budget by $${Math.abs(remaining).toLocaleString()}) - ${b.period || 'monthly'}`;
+}).join('\n') : '- No budgets set'}
 
 FINANCIAL GOALS:
-${goals.length > 0 ? goals.map(g => `- ${g.name}: $${g.currentAmount.toLocaleString()}/$${g.targetAmount.toLocaleString()} (${((g.currentAmount/g.targetAmount)*100).toFixed(0)}% complete) - Target: ${g.targetDate}`).join('\n') : '- No goals set'}
+${goals.length > 0 ? goals.map(g => {
+  const currentAmount = g.currentAmount || g.current || 0;
+  const targetAmount = g.targetAmount || g.target || 0;
+  const targetDate = g.targetDate || 'No target date';
+  const progress = targetAmount > 0 ? ((currentAmount/targetAmount)*100).toFixed(0) : 0;
+  return `- ${g.name}: $${currentAmount.toLocaleString()}/$${targetAmount.toLocaleString()} (${progress}% complete) - Target: ${targetDate}`;
+}).join('\n') : '- No goals set'}
 
 TRANSACTION ANALYSIS:
 - Total Transactions: ${transactions.length}
@@ -1326,13 +1350,16 @@ export async function generateExpensePredictions(transactions: Array<{
 }>, language: string = 'en-us'): Promise<ExpensePrediction> {
   const normalizedLanguage = normalizeLanguageCode(language);
   try {
-    // Return empty predictions for insufficient data
-    if (!transactions || transactions.length < 5) {
+    // Return empty predictions for insufficient data - reduced threshold for better user experience
+    if (!transactions || transactions.length < 3) {
+      console.log('[expense-predictions] Insufficient data - need at least 3 transactions, got:', transactions?.length || 0);
       return {
         categoryPredictions: [],
         monthlyPredictions: []
       };
     }
+    
+    console.log('[expense-predictions] Processing', transactions.length, 'transactions for predictions');
 
     // Filter expense transactions only and limit to last 12 months for efficiency
     const oneYearAgo = new Date();
@@ -1343,12 +1370,15 @@ export async function generateExpensePredictions(transactions: Array<{
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(-100); // Limit to last 100 transactions for token efficiency
 
-    if (expenseTransactions.length < 3) {
+    if (expenseTransactions.length < 2) {
+      console.log('[expense-predictions] Insufficient expense transactions:', expenseTransactions.length);
       return {
         categoryPredictions: [],
         monthlyPredictions: []
       };
     }
+    
+    console.log('[expense-predictions] Using', expenseTransactions.length, 'expense transactions for analysis');
 
 
     // Analyze spending patterns by month and category
@@ -1942,18 +1972,22 @@ app.post("/execute-gpt-task", async (req, res) => {
 
     switch (task) {
       case "contextual-tips":
+        console.log('[contextual-tips] Processing request with payload:', JSON.stringify(payload, null, 2));
+        
         // Validate and fix payload structure for contextual tips
         const contextualPayload = {
-          summary: payload.summary,
-          transactions: payload.transactions,
-          budgets: payload.budgets,
-          goals: payload.goals,
-          selectedMonth: payload.selectedMonth
+          summary: payload.summary || {},
+          transactions: payload.transactions || [],
+          budgets: payload.budgets || [],
+          goals: payload.goals || [],
+          selectedMonth: payload.selectedMonth || new Date().toISOString().slice(0, 7),
+          language: payload.language || 'en-us'
         };
         
         // Generate summary from transactions if missing or incomplete
         if (!payload.summary || payload.summary.totalIncome === undefined) {
-          const validTransactions = contextualPayload.transactions;
+          console.log('[contextual-tips] Generating summary from transactions');
+          const validTransactions = contextualPayload.transactions || [];
           const totalIncome = validTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
           const totalExpenses = validTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
           contextualPayload.summary = {
@@ -1964,8 +1998,9 @@ app.post("/execute-gpt-task", async (req, res) => {
           };
         }
         
-        contextualPayload.language = payload.language || 'en-us';
+        console.log('[contextual-tips] Final payload:', JSON.stringify(contextualPayload, null, 2));
         result = await generateContextualFinancialTips(contextualPayload);
+        console.log('[contextual-tips] Result:', JSON.stringify(result, null, 2));
         break;
       
       case "financial-tips":
