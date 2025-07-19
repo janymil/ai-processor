@@ -2076,7 +2076,17 @@ app.post("/execute-gpt-task", async (req, res) => {
         
         const completion = await getAIClient().chat.completions.create({
           model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: prompt }],
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a JSON extraction AI. Respond ONLY with valid JSON. No explanations, no markdown, no code blocks.'
+            },
+            {
+              role: 'user', 
+              content: prompt
+            }
+          ],
+          response_format: { type: "json_object" },
           temperature: 0.1,
           max_tokens: 500
         });
@@ -2130,7 +2140,17 @@ app.post('/api/ai/voice-extract', async (req, res) => {
     
     const completion = await getAIClient().chat.completions.create({
       model: model || 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a JSON extraction AI. Respond ONLY with valid JSON. No explanations, no markdown, no code blocks.'
+        },
+        {
+          role: 'user', 
+          content: prompt
+        }
+      ],
+      response_format: { type: "json_object" },
       temperature: 0.1,
       max_tokens: 500
     });
