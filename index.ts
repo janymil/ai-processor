@@ -2067,6 +2067,22 @@ app.post("/execute-gpt-task", async (req, res) => {
         );
         break;
 
+      case "voice-extraction":
+        // Direct OpenAI call for voice extraction using the same prompt from voiceRoutes.ts
+        const { prompt } = payload;
+        if (!prompt) {
+          return res.status(400).json({ error: 'Missing prompt for voice extraction' });
+        }
+        
+        const completion = await getAIClient().chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.1,
+          max_tokens: 500
+        });
+        result = completion.choices[0]?.message?.content || '';
+        break;
+
       default:
         return res.status(400).json({ error: `Unknown task: ${task}` });
     }
@@ -2098,6 +2114,38 @@ app.post('/generate-daily-recommendation', async (req, res) => {
   } catch (error) {
     console.error('Legacy daily recommendation error:', error);
     res.status(500).json({ error: 'Daily recommendation generation failed' });
+  }
+});
+
+// Voice extraction endpoint for voice input processing
+app.post('/api/ai/voice-extract', async (req, res) => {
+  try {
+    const { prompt, userId, model } = req.body;
+    
+    if (!prompt) {
+      return res.status(400).json({ error: 'Missing required field: prompt' });
+    }
+    
+    console.log(`[voice-extract] Processing voice extraction for user ${userId?.substring(0, 8)}...`);
+    
+    const completion = await getAIClient().chat.completions.create({
+      model: model || 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      max_tokens: 500
+    });
+    
+    const result = completion.choices[0]?.message?.content || '';
+    
+    console.log(`[voice-extract] Voice extraction completed successfully`);
+    
+    res.json({ 
+      result,
+      completion: result // Support both response formats
+    });
+  } catch (error: any) {
+    console.error('[voice-extract] Voice extraction error:', error);
+    res.status(500).json({ error: error.message || 'Voice extraction failed' });
   }
 });
 
