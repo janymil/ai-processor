@@ -55,6 +55,49 @@ app.use(express.json({ limit: '10mb' }));
 // External AI processor using cost-effective models while maintaining quality for financial analysis
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// Mistral API client - mimics OpenAI interface
+class MistralClient {
+  private apiKey: string;
+  private baseURL: string = 'https://api.mistral.ai/v1';
+
+  constructor(apiKey: string) {
+    this.apiKey = apiKey;
+  }
+
+  chat = {
+    completions: {
+      create: async (params: any) => {
+        try {
+          const response = await axios.post(`${this.baseURL}/chat/completions`, {
+            model: params.model || 'mistral-small-2506',
+            messages: params.messages,
+            temperature: params.temperature || 0.1,
+            max_tokens: params.max_tokens || 1000,
+            response_format: params.response_format
+          }, {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          // Return in OpenAI compatible format
+          return {
+            choices: [{
+              message: {
+                content: response.data.choices[0].message.content
+              }
+            }]
+          };
+        } catch (error) {
+          console.error('Mistral API error:', error);
+          throw error;
+        }
+      }
+    }
+  };
+}
+
 // DeepSeek API client - mimics OpenAI interface
 class DeepSeekClient {
   private apiKey: string;
@@ -98,11 +141,18 @@ class DeepSeekClient {
   };
 }
 
+const mistral = new MistralClient(process.env.MISTRAL_API_KEY || '');
 const deepseek = new DeepSeekClient(process.env.DEEPSEEK_API_KEY || '');
 
-// Model selection function - now using OpenAI gpt-4o-mini by default
-function getAIClient(useDeepSeek: boolean = false) {
-  return useDeepSeek ? deepseek : openai;
+// Model selection function - prioritizing cost-effective models
+function getAIClient(preferredModel?: 'mistral' | 'deepseek' | 'openai') {
+  if (preferredModel === 'mistral' && process.env.MISTRAL_API_KEY) {
+    return mistral;
+  } else if (preferredModel === 'deepseek' && process.env.DEEPSEEK_API_KEY) {
+    return deepseek;
+  } else {
+    return openai; // Default fallback
+  }
 }
 
 export interface ExpenseCategorizationResult {
@@ -191,8 +241,8 @@ export async function categorizeExpenseWithUserCategories(
   try {
     const userCategoryList = userCategories.map(cat => `- ${cat.name} (ID: ${cat.id})`).join('\n');
     
-    const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
+    const response = await getAIClient('mistral').chat.completions.create({
+      model: "mistral-small-2506",
       messages: [
         {
           role: "system",
@@ -314,8 +364,8 @@ export async function categorizeExpense(
       .map(([merchant, category]) => `"${merchant}" → ${category}`)
       .join('\n');
 
-    const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
+    const response = await getAIClient('mistral').chat.completions.create({
+      model: "mistral-small-2506",
       messages: [
         {
           role: "system",
@@ -2074,8 +2124,8 @@ app.post("/execute-gpt-task", async (req, res) => {
           return res.status(400).json({ error: 'Missing prompt for voice extraction' });
         }
         
-        const completion = await getAIClient().chat.completions.create({
-          model: 'gpt-4o-mini',
+        const completion = await getAIClient('mistral').chat.completions.create({
+          model: 'mistral-small-2506',
           messages: [
             {
               role: 'system',
@@ -2139,8 +2189,8 @@ app.post('/api/ai/voice-extract', async (req, res) => {
     
     console.log(`[voice-extract] Processing voice extraction for user ${userId?.substring(0, 8)}...`);
     
-    const completion = await getAIClient().chat.completions.create({
-      model: model || 'gpt-4o-mini',
+    const completion = await getAIClient('mistral').chat.completions.create({
+      model: model || 'mistral-small-2506',
       messages: [
         {
           role: 'system',
