@@ -241,8 +241,8 @@ export async function categorizeExpenseWithUserCategories(
   try {
     const userCategoryList = userCategories.map(cat => `- ${cat.name} (ID: ${cat.id})`).join('\n');
     
-    const response = await getAIClient('mistral').chat.completions.create({
-      model: "mistral-small-2506",
+    const response = await getAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -364,8 +364,8 @@ export async function categorizeExpense(
       .map(([merchant, category]) => `"${merchant}" → ${category}`)
       .join('\n');
 
-    const response = await getAIClient('mistral').chat.completions.create({
-      model: "mistral-small-2506",
+    const response = await getAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -2003,6 +2003,99 @@ NEVER return empty arrays for personalizedFactors or recommendations.`
   }
 }
 
+// Intelligent conversational transaction data extraction
+export async function extractConversationalTransactionData(data: {
+  transcript: string;
+  existingData: any;
+  userCurrency: string;
+}, language: string = 'en-us') {
+  const normalizedLanguage = normalizeLanguageCode(language);
+  const languageLabel = getLanguageLabel(normalizedLanguage);
+  
+  try {
+    const prompt = `Extract clean, properly formatted transaction data from natural conversation.
+
+CRITICAL INSTRUCTIONS:
+1. Extract the ESSENCE of what was bought/paid for, not the raw sentence
+2. Clean up descriptions to be concise product/service names
+3. Detect expense vs income intelligently
+4. Parse dates naturally (today, yesterday, last week, etc.)
+5. Extract amounts in any format (5, päť, cinco, etc.)
+
+EXAMPLES:
+- "kupoval som pivo" → description: "pivo" (not "kupoval som pivo")
+- "I bought coffee for 5 dollars" → description: "coffee", amount: 5, type: "expense"
+- "Today I paid rent 800 euros" → description: "rent", amount: 800, type: "expense", date: "${new Date().toISOString().split('T')[0]}"
+- "Got salary 2000" → description: "salary", amount: 2000, type: "income"
+- "päť eur" (when amount asked) → amount: 5
+- "včera" (when date asked) → date: "${new Date(Date.now() - 86400000).toISOString().split('T')[0]}"
+
+Current transcript: "${data.transcript}"
+Existing collected data: ${JSON.stringify(data.existingData)}
+User currency: ${data.userCurrency}
+Language context: ${languageLabel}
+
+Extract and return ONLY a JSON object with these fields:
+{
+  "amount": number or null,
+  "description": "clean product/service name" or null,
+  "type": "expense" or "income" or null,
+  "date": "YYYY-MM-DD" or null,
+  "note": "additional context" or null
+}
+
+Return ONLY the JSON object, no explanation.`;
+
+    const client = getAIClient('mistral');
+    const completion = await client.chat.completions.create({
+      model: 'mistral-small-2506',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a transaction data extraction specialist. Extract clean, properly formatted transaction data from natural conversation. CRITICAL: You MUST respond exclusively in ${languageLabel}. Never use English words if the language is not English.`
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.1,
+      max_tokens: 300
+    });
+
+    const response = completion.choices[0].message.content?.trim();
+    
+    if (response) {
+      try {
+        const extractedData = JSON.parse(response);
+        return extractedData;
+      } catch (parseError) {
+        return {
+          amount: null,
+          description: data.transcript,
+          type: null,
+          date: null,
+          note: null
+        };
+      }
+    }
+
+    return {
+      amount: null,
+      description: null,
+      type: null,
+      date: null,
+      note: null
+    };
+
+  } catch (error) {
+    return {
+      amount: null,
+      description: data.transcript,
+      type: null,
+      date: null,
+      note: null
+    };
+  }
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ai-processor', model: 'gpt-4o-mini' });
@@ -2118,6 +2211,14 @@ app.post("/execute-gpt-task", async (req, res) => {
         break;
 
       case "voice-extraction":
+        result = await extractConversationalTransactionData({
+          transcript: payload.transcript,
+          existingData: payload.existingData,
+          userCurrency: payload.userCurrency
+        }, payload.language || 'en-us');
+        break;
+
+      case "voice-extraction-legacy":
         // Direct OpenAI call for voice extraction using the same prompt from voiceRoutes.ts
         const { prompt, language } = payload;
         if (!prompt) {
