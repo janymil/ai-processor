@@ -2069,7 +2069,7 @@ app.post("/execute-gpt-task", async (req, res) => {
 
       case "voice-extraction":
         // Direct OpenAI call for voice extraction using the same prompt from voiceRoutes.ts
-        const { prompt } = payload;
+        const { prompt, language } = payload;
         if (!prompt) {
           return res.status(400).json({ error: 'Missing prompt for voice extraction' });
         }
@@ -2079,7 +2079,8 @@ app.post("/execute-gpt-task", async (req, res) => {
           messages: [
             {
               role: 'system',
-              content: 'You are a JSON extraction AI. Respond ONLY with valid JSON. No explanations, no markdown, no code blocks.'
+              content: `You are a JSON extraction AI. Respond ONLY with valid JSON. No explanations, no markdown, no code blocks.
+CRITICAL: You MUST respond exclusively in ${getLanguageLabel(language || 'en-us')} for all text fields (vendor, description, categoryName, ambiguities, followUpQuestions).`
             },
             {
               role: 'user', 
@@ -2130,7 +2131,7 @@ app.post('/generate-daily-recommendation', async (req, res) => {
 // Voice extraction endpoint for voice input processing
 app.post('/api/ai/voice-extract', async (req, res) => {
   try {
-    const { prompt, userId, model } = req.body;
+    const { prompt, userId, model, language } = req.body;
     
     if (!prompt) {
       return res.status(400).json({ error: 'Missing required field: prompt' });
@@ -2143,7 +2144,8 @@ app.post('/api/ai/voice-extract', async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: 'You are a JSON extraction AI. Respond ONLY with valid JSON. No explanations, no markdown, no code blocks.'
+          content: `You are a JSON extraction AI. Respond ONLY with valid JSON. No explanations, no markdown, no code blocks.
+CRITICAL: You MUST respond exclusively in ${getLanguageLabel(language || 'en-us')} for all text fields (vendor, description, categoryName, ambiguities, followUpQuestions).`
         },
         {
           role: 'user', 
