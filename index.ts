@@ -68,19 +68,30 @@ class MistralClient {
     completions: {
       create: async (params: any) => {
         try {
-          const response = await axios.post(`${this.baseURL}/chat/completions`, {
+          const requestBody: any = {
             model: params.model || 'mistral-small-2506',
             messages: params.messages,
             temperature: params.temperature || 0.1,
-            max_tokens: params.max_tokens || 1000,
-            response_format: params.response_format
-          }, {
+            max_tokens: params.max_tokens || 1000
+          };
+          
+          // Add response_format only if specified and supported
+          if (params.response_format && params.response_format.type === 'json_object') {
+            requestBody.response_format = params.response_format;
+          }
+          
+          console.log('[Mistral API] Request body:', JSON.stringify(requestBody, null, 2));
+          
+          const response = await axios.post(`${this.baseURL}/chat/completions`, requestBody, {
             headers: {
               'Authorization': `Bearer ${this.apiKey}`,
               'Content-Type': 'application/json'
-            }
+            },
+            timeout: 30000
           });
 
+          console.log('[Mistral API] Response:', response.data);
+          
           // Return in OpenAI compatible format
           return {
             choices: [{
@@ -89,8 +100,12 @@ class MistralClient {
               }
             }]
           };
-        } catch (error) {
-          console.error('Mistral API error:', error);
+        } catch (error: any) {
+          console.error('Mistral API error:', {
+            message: error.message,
+            status: error.response?.status,
+            data: error.response?.data
+          });
           throw error;
         }
       }
@@ -2013,85 +2028,132 @@ export async function extractConversationalTransactionData(data: {
   const languageLabel = getLanguageLabel(normalizedLanguage);
   
   try {
-    const prompt = `Extract clean, properly formatted transaction data from natural conversation.
+    console.log(`[Voice Extraction] Processing transcript: "${data.transcript}"`);
+    
+    // Try Mistral first, then fallback to OpenAI
+    let completion;
+    let usingModel = 'mistral';
+    
+    try {
+      const mistralClient = getAIClient('mistral');
+      if (!process.env.MISTRAL_API_KEY) {
+        throw new Error('Mistral API key not available');
+      }
+      
+      completion = await mistralClient.chat.completions.create({
+        model: 'mistral-small-2506',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a transaction data extraction specialist. Extract clean, properly formatted transaction data from natural conversation. CRITICAL: You MUST respond exclusively in ${languageLabel}. Return ONLY valid JSON with no additional text.`
+          },
+          { 
+            role: 'user', 
+            content: `Extract transaction details from: "${data.transcript}"
 
-CRITICAL INSTRUCTIONS:
-1. Extract the ESSENCE of what was bought/paid for, not the raw sentence
-2. Clean up descriptions to be concise product/service names
-3. Detect expense vs income intelligently
-4. Parse dates naturally (today, yesterday, last week, etc.)
-5. Extract amounts in any format (5, päť, cinco, etc.)
-
-EXAMPLES:
-- "kupoval som pivo" → description: "pivo" (not "kupoval som pivo")
-- "I bought coffee for 5 dollars" → description: "coffee", amount: 5, type: "expense"
-- "Today I paid rent 800 euros" → description: "rent", amount: 800, type: "expense", date: "${new Date().toISOString().split('T')[0]}"
-- "Got salary 2000" → description: "salary", amount: 2000, type: "income"
-- "päť eur" (when amount asked) → amount: 5
-- "včera" (when date asked) → date: "${new Date(Date.now() - 86400000).toISOString().split('T')[0]}"
-
-Current transcript: "${data.transcript}"
-Existing collected data: ${JSON.stringify(data.existingData)}
-User currency: ${data.userCurrency}
-Language context: ${languageLabel}
-
-Extract and return ONLY a JSON object with these fields:
+Return ONLY this JSON format:
 {
-  "amount": number or null,
-  "description": "clean product/service name" or null,
-  "type": "expense" or "income" or null,
-  "date": "YYYY-MM-DD" or null,
-  "note": "additional context" or null
+  "amount": number_or_null,
+  "description": "clean_description",
+  "type": "expense_or_income_or_null",
+  "date": "YYYY-MM-DD_or_null",
+  "note": "context_or_null"
 }
 
-Return ONLY the JSON object, no explanation.`;
+Examples:
+- "I spent 25 dollars at McDonald's" → {"amount": 25, "description": "McDonald's", "type": "expense", "date": null, "note": null}
+- "Got my salary 3000 today" → {"amount": 3000, "description": "salary", "type": "income", "date": "${new Date().toISOString().split('T')[0]}", "note": null}`
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 300,
+        response_format: { type: "json_object" }
+      });
+    } catch (mistralError) {
+      console.log(`[Voice Extraction] Mistral failed, trying OpenAI:`, mistralError.message);
+      usingModel = 'openai';
+      
+      const openaiClient = getAIClient('openai');
+      completion = await openaiClient.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a transaction data extraction specialist. Extract clean, properly formatted transaction data from natural conversation. CRITICAL: You MUST respond exclusively in ${languageLabel}. Return ONLY valid JSON.`
+          },
+          { 
+            role: 'user', 
+            content: `Extract transaction details from: "${data.transcript}"
 
-    const client = getAIClient('mistral');
-    const completion = await client.chat.completions.create({
-      model: 'mistral-small-2506',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a transaction data extraction specialist. Extract clean, properly formatted transaction data from natural conversation. CRITICAL: You MUST respond exclusively in ${languageLabel}. Never use English words if the language is not English.`
-        },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.1,
-      max_tokens: 300
-    });
+Return ONLY this JSON format:
+{
+  "amount": number_or_null,
+  "description": "clean_description",
+  "type": "expense_or_income_or_null",
+  "date": "YYYY-MM-DD_or_null",
+  "note": "context_or_null"
+}
+
+Examples:
+- "I spent 25 dollars at McDonald's" → {"amount": 25, "description": "McDonald's", "type": "expense", "date": null, "note": null}
+- "Got my salary 3000 today" → {"amount": 3000, "description": "salary", "type": "income", "date": "${new Date().toISOString().split('T')[0]}", "note": null}`
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 300,
+        response_format: { type: "json_object" }
+      });
+    }
 
     const response = completion.choices[0].message.content?.trim();
+    console.log(`[Voice Extraction] ${usingModel} response:`, response);
     
     if (response) {
       try {
-        const extractedData = JSON.parse(response);
-        return extractedData;
+        // Clean the response to ensure it's valid JSON
+        const cleanedResponse = response.replace(/```json|```/g, '').trim();
+        const extractedData = JSON.parse(cleanedResponse);
+        
+        // Validate the extracted data structure
+        const validatedData = {
+          amount: typeof extractedData.amount === 'number' ? extractedData.amount : null,
+          description: typeof extractedData.description === 'string' ? extractedData.description : data.transcript,
+          type: ['expense', 'income'].includes(extractedData.type) ? extractedData.type : null,
+          date: typeof extractedData.date === 'string' && extractedData.date.match(/^\d{4}-\d{2}-\d{2}$/) ? extractedData.date : null,
+          note: typeof extractedData.note === 'string' ? extractedData.note : null
+        };
+        
+        console.log(`[Voice Extraction] Extracted data:`, validatedData);
+        return validatedData;
       } catch (parseError) {
+        console.error(`[Voice Extraction] JSON parse error:`, parseError.message, 'Response:', response);
         return {
           amount: null,
           description: data.transcript,
           type: null,
           date: null,
-          note: null
+          note: `Parse error: ${parseError.message}`
         };
       }
     }
 
-    return {
-      amount: null,
-      description: null,
-      type: null,
-      date: null,
-      note: null
-    };
-
-  } catch (error) {
+    console.log(`[Voice Extraction] No response from AI`);
     return {
       amount: null,
       description: data.transcript,
       type: null,
       date: null,
-      note: null
+      note: 'No AI response'
+    };
+
+  } catch (error) {
+    console.error(`[Voice Extraction] General error:`, error.message);
+    return {
+      amount: null,
+      description: data.transcript,
+      type: null,
+      date: null,
+      note: `Error: ${error.message}`
     };
   }
 }
