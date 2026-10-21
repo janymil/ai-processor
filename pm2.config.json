@@ -2,14 +2,14 @@
   "apps": [{
     "name": "ai-processor",
     "script": "npx tsx index.ts",
-    "cwd": "/home/coder/ai-processor",
+    "cwd": "/var/www/ai-processor",
     "instances": 1,
     "exec_mode": "fork",
     "watch": false,
     "max_memory_restart": "512M",
     "env": {
       "NODE_ENV": "production",
-      "PORT": "8080",
+      "PORT": "8081",
       "HOST": "0.0.0.0"
     },
     "error_file": "./logs/err.log",

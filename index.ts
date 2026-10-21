@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import OpenAI from "openai";
+import { createRoutedClient, getProviderStatus } from './providers';
 import axios from "axios";
 import dotenv from "dotenv";
 
@@ -48,12 +48,37 @@ const port = parseInt(process.env.PORT || '8080', 10);
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// API key authentication middleware (protects all routes except /health and CORS preflight)
+app.use((req, res, next) => {
+  if (req.path === '/health' || req.method === 'OPTIONS') {
+    return next();
+  }
+
+  const expectedKey = process.env.AI_PROCESSOR_API_KEY;
+  if (!expectedKey) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  const bearerKey = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const apiKey = (req.headers['x-api-key'] as string) || (req.headers['x-api-token'] as string) || bearerKey;
+
+  if (!apiKey || apiKey !== expectedKey) {
+    return res.status(401).json({
+      error: 'Unauthorized: Invalid or missing API key. Provide via x-api-key header or Authorization: Bearer <key>.'
+    });
+  }
+
+  next();
+});
+
+
 
 
 
 
 // External AI processor using cost-effective models while maintaining quality for financial analysis
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = createRoutedClient();
 
 // Mistral API client - mimics OpenAI interface
 class MistralClient {
@@ -68,30 +93,19 @@ class MistralClient {
     completions: {
       create: async (params: any) => {
         try {
-          const requestBody: any = {
-            model: params.model || 'mistral-small-2506',
+          const response = await axios.post(`${this.baseURL}/chat/completions`, {
+            model: params.model || 'mistral-small-latest',
             messages: params.messages,
             temperature: params.temperature || 0.1,
-            max_tokens: params.max_tokens || 1000
-          };
-          
-          // Add response_format only if specified and supported
-          if (params.response_format && params.response_format.type === 'json_object') {
-            requestBody.response_format = params.response_format;
-          }
-          
-          console.log('[Mistral API] Request body:', JSON.stringify(requestBody, null, 2));
-          
-          const response = await axios.post(`${this.baseURL}/chat/completions`, requestBody, {
+            max_tokens: params.max_tokens || 1000,
+            response_format: params.response_format
+          }, {
             headers: {
               'Authorization': `Bearer ${this.apiKey}`,
               'Content-Type': 'application/json'
-            },
-            timeout: 30000
+            }
           });
 
-          console.log('[Mistral API] Response:', response.data);
-          
           // Return in OpenAI compatible format
           return {
             choices: [{
@@ -100,12 +114,8 @@ class MistralClient {
               }
             }]
           };
-        } catch (error: any) {
-          console.error('Mistral API error:', {
-            message: error.message,
-            status: error.response?.status,
-            data: error.response?.data
-          });
+        } catch (error) {
+          console.error('Mistral API error:', error);
           throw error;
         }
       }
@@ -127,11 +137,14 @@ class DeepSeekClient {
       create: async (params: any) => {
         try {
           const response = await axios.post(`${this.baseURL}/chat/completions`, {
-            model: params.model,
+            model: params.model || 'deepseek-flash',
             messages: params.messages,
-            temperature: params.temperature || 0.7,
-            max_tokens: params.max_tokens || 4000,
-            response_format: params.response_format
+            temperature: params.temperature ?? 0.7,
+            max_tokens: params.max_tokens ?? 4000,
+            response_format: params.response_format,
+            // DeepSeek defaults to thinking mode; short structured tasks then return
+            // empty content because the whole budget goes to reasoning tokens.
+            thinking: { type: 'disabled' }
           }, {
             headers: {
               'Authorization': `Bearer ${this.apiKey}`,
@@ -257,7 +270,7 @@ export async function categorizeExpenseWithUserCategories(
     const userCategoryList = userCategories.map(cat => `- ${cat.name} (ID: ${cat.id})`).join('\n');
     
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-6-luna",
       messages: [
         {
           role: "system",
@@ -380,7 +393,7 @@ export async function categorizeExpense(
       .join('\n');
 
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-6-luna",
       messages: [
         {
           role: "system",
@@ -742,7 +755,7 @@ Return 2-4 contextual tips in JSON format, prioritizing scenario-based insights:
 }`;
 
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini", // Using DeepSeek-R1 instead of GPT-4o
+      model: "gpt-6-luna", // Using DeepSeek-R1 instead of GPT-4o
       messages: [
         {
           role: "system",
@@ -883,7 +896,7 @@ Generate 4 independent box analyses with exact mathematical calculations.`;
 
     // Direct OpenAI call (no recursion - this IS the AI processor)
     const response = await getAIClient().chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-6-luna",
         messages: [
           {
             role: "system",
@@ -1045,7 +1058,7 @@ export async function generateSpendingInsights(transactions: Array<{
     const totalAmount = recentTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini", // Use faster model for spending insights
+      model: "gpt-6-luna", // Use faster model for spending insights
       messages: [
         {
           role: "system",
@@ -1140,7 +1153,7 @@ export async function generateAIFinancialHealthScore(financialData: {
     // No caching in Fly.io - caching handled by main application
 
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-6-luna",
       messages: [
         {
           role: "system",
@@ -1350,7 +1363,7 @@ Analysis Requirements:
 - Analyze budget adherence and variance predictions`;
 
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini", // Using cost-effective DeepSeek model for financial forecasting
+      model: "gpt-6-luna", // Using cost-effective DeepSeek model for financial forecasting
       messages: [
         {
           role: "system",
@@ -1564,7 +1577,7 @@ ANALYSIS GUIDELINES:
 - Ensure all numeric values are provided (no null/undefined)`;
 
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-6-luna",
       messages: [
         {
           role: "system",
@@ -1748,7 +1761,7 @@ Focus on:
 Only provide recommendations and insights based on the actual financial data provided. Do not include generic advice.`;
 
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini", // Using cost-effective DeepSeek model for daily recommendations
+      model: "gpt-6-luna", // Using cost-effective DeepSeek model for daily recommendations
       messages: [
         {
           role: "system",
@@ -1865,7 +1878,7 @@ export async function generateFinancialHealthScore(financialData: {
     const savingsRate = summary.totalIncome > 0 ? ((summary.totalIncome - summary.totalExpenses) / summary.totalIncome * 100) : 0;
     
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-6-luna",
       messages: [
         {
           role: "system",
@@ -2028,139 +2041,98 @@ export async function extractConversationalTransactionData(data: {
   const languageLabel = getLanguageLabel(normalizedLanguage);
   
   try {
-    console.log(`[Voice Extraction] Processing transcript: "${data.transcript}"`);
-    
-    // Try Mistral first, then fallback to OpenAI
-    let completion;
-    let usingModel = 'mistral';
-    
-    try {
-      const mistralClient = getAIClient('mistral');
-      if (!process.env.MISTRAL_API_KEY) {
-        throw new Error('Mistral API key not available');
-      }
-      
-      completion = await mistralClient.chat.completions.create({
-        model: 'mistral-small-2506',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a transaction data extraction specialist. Extract clean, properly formatted transaction data from natural conversation. CRITICAL: You MUST respond exclusively in ${languageLabel}. Return ONLY valid JSON with no additional text.`
-          },
-          { 
-            role: 'user', 
-            content: `Extract transaction details from: "${data.transcript}"
+    const prompt = `Extract clean, properly formatted transaction data from natural conversation.
 
-Return ONLY this JSON format:
+CRITICAL INSTRUCTIONS:
+1. Extract the ESSENCE of what was bought/paid for, not the raw sentence
+2. Clean up descriptions to be concise product/service names
+3. Detect expense vs income intelligently
+4. Parse dates naturally (today, yesterday, last week, etc.)
+5. Extract amounts in any format (5, päť, cinco, etc.)
+
+EXAMPLES:
+- "kupoval som pivo" → description: "pivo" (not "kupoval som pivo")
+- "I bought coffee for 5 dollars" → description: "coffee", amount: 5, type: "expense"
+- "Today I paid rent 800 euros" → description: "rent", amount: 800, type: "expense", date: "${new Date().toISOString().split('T')[0]}"
+- "Got salary 2000" → description: "salary", amount: 2000, type: "income"
+- "päť eur" (when amount asked) → amount: 5
+- "včera" (when date asked) → date: "${new Date(Date.now() - 86400000).toISOString().split('T')[0]}"
+
+Current transcript: "${data.transcript}"
+Existing collected data: ${JSON.stringify(data.existingData)}
+User currency: ${data.userCurrency}
+Language context: ${languageLabel}
+
+Extract and return ONLY a JSON object with these fields:
 {
-  "amount": number_or_null,
-  "description": "clean_description",
-  "type": "expense_or_income_or_null",
-  "date": "YYYY-MM-DD_or_null",
-  "note": "context_or_null"
+  "amount": number or null,
+  "description": "clean product/service name" or null,
+  "type": "expense" or "income" or null,
+  "date": "YYYY-MM-DD" or null,
+  "note": "additional context" or null
 }
 
-Examples:
-- "I spent 25 dollars at McDonald's" → {"amount": 25, "description": "McDonald's", "type": "expense", "date": null, "note": null}
-- "Got my salary 3000 today" → {"amount": 3000, "description": "salary", "type": "income", "date": "${new Date().toISOString().split('T')[0]}", "note": null}`
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 300,
-        response_format: { type: "json_object" }
-      });
-    } catch (mistralError) {
-      console.log(`[Voice Extraction] Mistral failed, trying OpenAI:`, mistralError.message);
-      usingModel = 'openai';
-      
-      const openaiClient = getAIClient('openai');
-      completion = await openaiClient.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a transaction data extraction specialist. Extract clean, properly formatted transaction data from natural conversation. CRITICAL: You MUST respond exclusively in ${languageLabel}. Return ONLY valid JSON.`
-          },
-          { 
-            role: 'user', 
-            content: `Extract transaction details from: "${data.transcript}"
+Return ONLY the JSON object, no explanation.`;
 
-Return ONLY this JSON format:
-{
-  "amount": number_or_null,
-  "description": "clean_description",
-  "type": "expense_or_income_or_null",
-  "date": "YYYY-MM-DD_or_null",
-  "note": "context_or_null"
-}
-
-Examples:
-- "I spent 25 dollars at McDonald's" → {"amount": 25, "description": "McDonald's", "type": "expense", "date": null, "note": null}
-- "Got my salary 3000 today" → {"amount": 3000, "description": "salary", "type": "income", "date": "${new Date().toISOString().split('T')[0]}", "note": null}`
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 300,
-        response_format: { type: "json_object" }
-      });
-    }
+    const client = getAIClient('mistral');
+    const completion = await client.chat.completions.create({
+      model: 'mistral-small-latest',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a transaction data extraction specialist. Extract clean, properly formatted transaction data from natural conversation. CRITICAL: You MUST respond exclusively in ${languageLabel}. Never use English words if the language is not English.`
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.1,
+      max_tokens: 300
+    });
 
     const response = completion.choices[0].message.content?.trim();
-    console.log(`[Voice Extraction] ${usingModel} response:`, response);
     
     if (response) {
       try {
-        // Clean the response to ensure it's valid JSON
-        const cleanedResponse = response.replace(/```json|```/g, '').trim();
-        const extractedData = JSON.parse(cleanedResponse);
-        
-        // Validate the extracted data structure
-        const validatedData = {
-          amount: typeof extractedData.amount === 'number' ? extractedData.amount : null,
-          description: typeof extractedData.description === 'string' ? extractedData.description : data.transcript,
-          type: ['expense', 'income'].includes(extractedData.type) ? extractedData.type : null,
-          date: typeof extractedData.date === 'string' && extractedData.date.match(/^\d{4}-\d{2}-\d{2}$/) ? extractedData.date : null,
-          note: typeof extractedData.note === 'string' ? extractedData.note : null
-        };
-        
-        console.log(`[Voice Extraction] Extracted data:`, validatedData);
-        return validatedData;
+        const extractedData = JSON.parse(response);
+        return extractedData;
       } catch (parseError) {
-        console.error(`[Voice Extraction] JSON parse error:`, parseError.message, 'Response:', response);
         return {
           amount: null,
           description: data.transcript,
           type: null,
           date: null,
-          note: `Parse error: ${parseError.message}`
+          note: null
         };
       }
     }
 
-    console.log(`[Voice Extraction] No response from AI`);
     return {
       amount: null,
-      description: data.transcript,
+      description: null,
       type: null,
       date: null,
-      note: 'No AI response'
+      note: null
     };
 
   } catch (error) {
-    console.error(`[Voice Extraction] General error:`, error.message);
     return {
       amount: null,
       description: data.transcript,
       type: null,
       date: null,
-      note: `Error: ${error.message}`
+      note: null
     };
   }
 }
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'ai-processor', model: 'gpt-4o-mini' });
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'ai-processor',
+    version: process.env.npm_package_version || '1.0.0',
+    authRequired: Boolean(process.env.AI_PROCESSOR_API_KEY),
+    ...getProviderStatus(),
+  });
 });
 
 // Unified AI endpoint - stateless processing only
@@ -2288,7 +2260,7 @@ app.post("/execute-gpt-task", async (req, res) => {
         }
         
         const completion = await getAIClient('mistral').chat.completions.create({
-          model: 'mistral-small-2506',
+          model: 'mistral-small-latest',
           messages: [
             {
               role: 'system',
@@ -2353,7 +2325,7 @@ app.post('/api/ai/voice-extract', async (req, res) => {
     console.log(`[voice-extract] Processing voice extraction for user ${userId?.substring(0, 8)}...`);
     
     const completion = await getAIClient('mistral').chat.completions.create({
-      model: model || 'mistral-small-2506',
+      model: model || 'mistral-small-latest',
       messages: [
         {
           role: 'system',
@@ -2390,7 +2362,7 @@ CRITICAL: You MUST respond exclusively in ${getLanguageLabel(language || 'en-us'
  */
 async function parseBankStatement(text: string, language: string): Promise<any> {
   const languageLabel = getLanguageLabel(language);
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const openai = createRoutedClient();
 
   const bankStatementPrompt = `You are an expert financial data extraction system specialized in bank statement analysis. 
 
@@ -2431,7 +2403,7 @@ Respond ONLY with valid JSON. No explanations or additional text.`;
 
   try {
     const response = await getAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-6-luna",
       messages: [
         {
           role: "system",

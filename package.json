@@ -1,29 +1,22 @@
 {
   "name": "ai-processor",
   "version": "1.0.0",
-  "description": "OpenAI API proxy service for FinanzerPro",
+  "description": "OpenAI API proxy service for Kaptia",
   "main": "index.ts",
   "scripts": {
     "start": "npx tsx index.ts",
     "dev": "npx tsx index.ts"
   },
   "dependencies": {
-    "axios": "^1.10.0",
+    "axios": "^1.7.9",
     "cors": "2.8.5",
     "dotenv": "16.3.1",
     "express": "4.18.2",
     "openai": "4.20.1",
-    "pm2": "^6.0.8",
-    "qrcode": "1.5.3",
     "tsx": "4.6.2",
     "typescript": "5.6.3"
   },
   "engines": {
     "node": ">=18"
-  },
-  "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.3",
-    "@types/node": "^24.0.15"
   }
 }
