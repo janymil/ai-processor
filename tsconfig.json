@@ -1,23 +1,22 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "commonjs",
-    "lib": ["ES2020"],
-    "outDir": "./",
+    "lib": ["ES2022", "DOM"],
     "rootDir": "./",
+    "noEmit": true,
     "strict": false,
     "noImplicitAny": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": false,
+    "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": false,
-    "removeComments": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "types": ["node"]
   },
   "include": [
-    "index.ts",
-    "openai-functions.ts"
+    "*.ts",
+    "tests/**/*.ts"
   ],
   "exclude": [
     "node_modules",
