@@ -1,23 +1,32 @@
-version: '3.8'
-
 services:
   ai-processor:
     build: .
+    # Stable tag so release.sh can keep the previous image for a rollback.
+    image: ai-processor:current
     ports:
+      # Bound to localhost: terminate TLS in nginx/Caddy and proxy to 127.0.0.1:8081.
       - "127.0.0.1:8081:8080"
     environment:
       - PORT=8080
       - NODE_ENV=production
+      # Set to true when nginx/Caddy sits in front, so rate limits see the real client address.
+      - GATEWAY_TRUST_PROXY=${GATEWAY_TRUST_PROXY:-false}
     env_file:
       - .env
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health > /dev/null || exit 1"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
-      start_period: 40s
-    # Optional: Limit resources for VPS
+      start_period: 20s
     deploy:
       resources:
         limits:

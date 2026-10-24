@@ -71,3 +71,5 @@ coverage/
 
 # Backup files
 package-backup.json
+.release/
+coverage/

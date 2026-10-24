@@ -3,6 +3,12 @@ node_modules
 *.js.map
 .git
 .gitignore
-README.md
 .env
 .env.local
+.release
+tests
+vitest.config.ts
+release.sh
+deploy*
+*.md
+*.tar.gz
